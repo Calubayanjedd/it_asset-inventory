@@ -223,10 +223,6 @@ include 'includes/layout.php';
             <input type="text" name="ip_address" placeholder="192.168.1.10">
           </div>
           <div class="form-group">
-            <label>MAC Address</label>
-            <input type="text" name="mac_address" placeholder="AA:BB:CC:DD:EE:FF">
-          </div>
-          <div class="form-group">
             <label>Purchase Date</label>
             <input type="date" name="purchase_date">
           </div>
@@ -313,10 +309,6 @@ include 'includes/layout.php';
           <div class="form-group">
             <label>IP Address</label>
             <input type="text" name="ip_address" id="edit-ip">
-          </div>
-          <div class="form-group">
-            <label>MAC Address</label>
-            <input type="text" name="mac_address" id="edit-mac">
           </div>
           <div class="form-group">
             <label>Purchase Date</label>
@@ -456,7 +448,6 @@ function openEditModal(asset) {
     document.getElementById('edit-model').value       = asset.model;
     document.getElementById('edit-serial').value      = asset.serial_number;
     document.getElementById('edit-ip').value          = asset.ip_address    || '';
-    document.getElementById('edit-mac').value         = asset.mac_address   || '';
     document.getElementById('edit-purchase').value    = asset.purchase_date  || '';
     document.getElementById('edit-warranty').value    = asset.warranty_expiry || '';
 

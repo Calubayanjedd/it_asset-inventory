@@ -11,7 +11,8 @@ $assignments = dbQuery(
      LEFT JOIN assets a ON asn.asset_id = a.id
      ORDER BY asn.created_at DESC'
 );
-$allAssets = dbQuery('SELECT id, asset_id, device_name, brand, device_type FROM assets ORDER BY asset_id');
+$allAssets = dbQuery('SELECT id, asset_id, device_name, brand, device_type FROM assets WHERE id NOT IN (SELECT asset_id FROM assignments WHERE status = \'Assigned\') ORDER BY asset_id');
+$allAssetsForEdit = dbQuery('SELECT id, asset_id, device_name, brand, device_type FROM assets ORDER BY asset_id');
 
 /* Departments pulled from locations — no more free-text */
 $departments = dbQuery('SELECT DISTINCT department FROM locations ORDER BY department');
@@ -126,7 +127,7 @@ include 'includes/layout.php';
             <select name="asset_id" required>
               <option value="">— Select asset —</option>
               <?php foreach ($allAssets as $a): ?>
-              <option value="<?= $a['id'] ?>">[<?= htmlspecialchars($a['asset_id']) ?>] <?= htmlspecialchars($a['device_name']) ?> — <?= htmlspecialchars($a['brand']) ?></option>
+              <option value="<?= $a['id'] ?>">[<?= htmlspecialchars($a['asset_id']) ?>] <?= htmlspecialchars($a['device_name']) ?> (<?= htmlspecialchars($a['device_type']) ?>) — <?= htmlspecialchars($a['brand']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
@@ -188,8 +189,8 @@ include 'includes/layout.php';
             <label>Asset</label>
             <select name="asset_id" id="edit-asset-id">
               <option value="">— Select asset —</option>
-              <?php foreach ($allAssets as $a): ?>
-              <option value="<?= $a['id'] ?>">[<?= htmlspecialchars($a['asset_id']) ?>] <?= htmlspecialchars($a['device_name']) ?></option>
+              <?php foreach ($allAssetsForEdit as $a): ?>
+              <option value="<?= $a['id'] ?>">[<?= htmlspecialchars($a['asset_id']) ?>] <?= htmlspecialchars($a['device_name']) ?> (<?= htmlspecialchars($a['device_type']) ?>) — <?= htmlspecialchars($a['brand']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>

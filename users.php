@@ -22,7 +22,7 @@ try {
     $logs = dbQuery(
         'SELECT l.*, u.username FROM activity_log l
          LEFT JOIN sys_users u ON l.user_id = u.id
-         ORDER BY l.created_at DESC LIMIT 40'
+         ORDER BY l.created_at DESC LIMIT 100'
     );
 } catch (Throwable $e) {
     $logs = [];

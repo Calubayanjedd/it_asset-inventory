@@ -40,7 +40,6 @@ if ($module === 'assets') {
             'model'          => trim($_POST['model'] ?? ''),
             'serial_number'  => trim($_POST['serial_number'] ?? ''),
             'ip_address'     => trim($_POST['ip_address'] ?? '') ?: null,
-            'mac_address'    => trim($_POST['mac_address'] ?? '') ?: null,
             'purchase_date'  => $_POST['purchase_date'] ?: null,
             'warranty_expiry'=> $_POST['warranty_expiry'] ?: null,
             'status'         => $_POST['status'] ?? 'Active',
@@ -64,9 +63,9 @@ if ($module === 'assets') {
             if ($action === 'add') {
                 dbExecute(
                     'INSERT INTO assets (asset_id,device_name,device_type,brand,model,serial_number,
-                     ip_address,mac_address,purchase_date,warranty_expiry,status,location_id)
+                     ip_address,purchase_date,warranty_expiry,status,location_id)
                      VALUES (:asset_id,:device_name,:device_type,:brand,:model,:serial_number,
-                     :ip_address,:mac_address,:purchase_date,:warranty_expiry,:status,:location_id)',
+                     :ip_address,:purchase_date,:warranty_expiry,:status,:location_id)',
                     $fields
                 );
                 $newId = (int)getDB()->lastInsertId();
@@ -75,6 +74,7 @@ if ($module === 'assets') {
                      FROM assets a LEFT JOIN locations l ON a.location_id = l.id WHERE a.id = ?',
                     [$newId]
                 );
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ADD ASSET', "Asset ID: {$fields['asset_id']}"]);
                 ok('Asset added successfully.', ['row' => $row, 'op' => 'add']);
             } else {
                 $id = (int)($_POST['record_id'] ?? 0);
@@ -82,7 +82,7 @@ if ($module === 'assets') {
                 dbExecute(
                     'UPDATE assets SET asset_id=:asset_id,device_name=:device_name,device_type=:device_type,
                      brand=:brand,model=:model,serial_number=:serial_number,ip_address=:ip_address,
-                     mac_address=:mac_address,purchase_date=:purchase_date,warranty_expiry=:warranty_expiry,
+                     purchase_date=:purchase_date,warranty_expiry=:warranty_expiry,
                      status=:status,location_id=:location_id WHERE id=:id',
                     array_merge($fields, ['id' => $id])
                 );
@@ -91,6 +91,7 @@ if ($module === 'assets') {
                      FROM assets a LEFT JOIN locations l ON a.location_id = l.id WHERE a.id = ?',
                     [$id]
                 );
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'UPDATE ASSET', "Asset ID: {$fields['asset_id']}"]);
                 ok('Asset updated successfully.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
             }
         } catch (PDOException $e) {
@@ -106,6 +107,7 @@ if ($module === 'assets') {
         if (!$id) fail('Missing record ID.');
         try {
             dbExecute('DELETE FROM assets WHERE id = ?', [$id]);
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'DELETE ASSET', "Asset ID: {$id}"]);
             ok('Asset deleted.', ['op' => 'delete', 'id' => $id]);
         } catch (PDOException $e) {
             fail('Error: ' . $e->getMessage());
@@ -132,6 +134,11 @@ if ($module === 'assignments') {
         if (!$fields['assigned_to']) fail('Assigned To is required.');
         if (!$fields['department'])  fail('Department is required.');
 
+        // If status is 'Assigned', clear date_returned
+        if ($fields['status'] === 'Assigned') {
+            $fields['date_returned'] = null;
+        }
+
         try {
             if ($action === 'add') {
                 dbExecute(
@@ -145,6 +152,7 @@ if ($module === 'assignments') {
                      FROM assignments asn LEFT JOIN assets a ON asn.asset_id = a.id WHERE asn.id = ?',
                     [$newId]
                 );
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ADD ASSIGNMENT', "Asset ID: {$fields['asset_id']}, Assigned to: {$fields['assigned_to']}"]);
                 ok('Assignment recorded successfully.', ['row' => $row, 'op' => 'add']);
             } else {
                 $id = (int)($_POST['record_id'] ?? 0);
@@ -160,6 +168,7 @@ if ($module === 'assignments') {
                      FROM assignments asn LEFT JOIN assets a ON asn.asset_id = a.id WHERE asn.id = ?',
                     [$id]
                 );
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'UPDATE ASSIGNMENT', "Assignment ID: {$id}, Asset ID: {$fields['asset_id']}"]);
                 ok('Assignment updated.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
             }
         } catch (PDOException $e) {
@@ -171,12 +180,13 @@ if ($module === 'assignments') {
         $id = (int)($_POST['record_id'] ?? 0);
         if (!$id) fail('Missing record ID.');
         try {
-            dbExecute("UPDATE assignments SET status='Returned', date_returned=CURDATE() WHERE id=?", [$id]);
+            dbExecute("UPDATE assignments SET status='Returned', date_returned=CURDATE() WHERE id=? AND status='Assigned'", [$id]);
             $row = dbRow(
                 'SELECT asn.*, a.asset_id AS asset_code, a.device_name, a.device_type, a.brand
                  FROM assignments asn LEFT JOIN assets a ON asn.asset_id = a.id WHERE asn.id = ?',
                 [$id]
             );
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'RETURN ASSET', "Assignment ID: {$id}"]);
             ok('Asset marked as returned.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
         } catch (PDOException $e) {
             fail('Error: ' . $e->getMessage());
@@ -188,6 +198,7 @@ if ($module === 'assignments') {
         if (!$id) fail('Missing record ID.');
         try {
             dbExecute('DELETE FROM assignments WHERE id=?', [$id]);
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'DELETE ASSIGNMENT', "Assignment ID: {$id}"]);
             ok('Assignment deleted.', ['op' => 'delete', 'id' => $id]);
         } catch (PDOException $e) {
             fail('Error: ' . $e->getMessage());
@@ -224,6 +235,7 @@ if ($module === 'locations') {
                 );
                 $newId = (int)getDB()->lastInsertId();
                 $row = dbRow('SELECT l.*, COUNT(a.id) AS asset_count FROM locations l LEFT JOIN assets a ON a.location_id = l.id WHERE l.id = ? GROUP BY l.id', [$newId]);
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ADD LOCATION', "Location ID: {$fields['location_id']}"]);
                 ok('Location added successfully.', ['row' => $row, 'op' => 'add']);
             } else {
                 $id = (int)($_POST['record_id'] ?? 0);
@@ -234,6 +246,7 @@ if ($module === 'locations') {
                     array_merge($fields, ['id' => $id])
                 );
                 $row = dbRow('SELECT l.*, COUNT(a.id) AS asset_count FROM locations l LEFT JOIN assets a ON a.location_id = l.id WHERE l.id = ? GROUP BY l.id', [$id]);
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'UPDATE LOCATION', "Location ID: {$fields['location_id']}"]);
                 ok('Location updated.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
             }
         } catch (PDOException $e) {
@@ -249,6 +262,7 @@ if ($module === 'locations') {
         if (!$id) fail('Missing record ID.');
         try {
             dbExecute('DELETE FROM locations WHERE id=?', [$id]);
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'DELETE LOCATION', "Location ID: {$id}"]);
             ok('Location deleted.', ['op' => 'delete', 'id' => $id]);
         } catch (PDOException $e) {
             fail('Cannot delete: assets may still reference this location. ' . $e->getMessage());
@@ -291,6 +305,7 @@ if ($module === 'stock') {
                 );
                 $newId = (int)getDB()->lastInsertId();
                 $row = dbRow('SELECT * FROM stock_items WHERE id = ?', [$newId]);
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ADD STOCK ITEM', "Item ID: {$fields['item_id']}"]);
                 ok("Item '{$fields['item_name']}' added.", ['row' => $row, 'op' => 'add']);
             } else {
                 $id = (int)($_POST['record_id'] ?? 0);
@@ -302,6 +317,7 @@ if ($module === 'stock') {
                     array_merge($fields, ['id' => $id])
                 );
                 $row = dbRow('SELECT * FROM stock_items WHERE id = ?', [$id]);
+                dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'UPDATE STOCK ITEM', "Item ID: {$fields['item_id']}"]);
                 ok('Item updated.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
             }
         } catch (PDOException $e) {
@@ -324,6 +340,7 @@ if ($module === 'stock') {
         dbExecute('INSERT INTO stock_movements (stock_item_id,movement_type,quantity,notes) VALUES (?,?,?,?)',
             [$id, 'IN', $add, 'Manual restock']);
         $row = dbRow('SELECT * FROM stock_items WHERE id=?', [$id]);
+        dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'RESTOCK ITEM', "Item ID: {$id}, Added: {$add}"]);
         ok("Restocked +{$add} units.", ['row' => $row, 'op' => 'edit', 'id' => $id]);
     }
 
@@ -340,6 +357,7 @@ if ($module === 'stock') {
         dbExecute('INSERT INTO stock_movements (stock_item_id,movement_type,quantity,notes) VALUES (?,?,?,?)',
             [$id, 'OUT', $sub, trim($_POST['issue_notes'] ?? 'Manual issue')]);
         $row = dbRow('SELECT * FROM stock_items WHERE id=?', [$id]);
+        dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ISSUE STOCK', "Item ID: {$id}, Issued: {$sub}"]);
         ok("Issued {$sub} unit(s).", ['row' => $row, 'op' => 'edit', 'id' => $id]);
     }
 
@@ -347,6 +365,7 @@ if ($module === 'stock') {
         $id = (int)($_POST['record_id'] ?? 0);
         if (!$id) fail('Missing record ID.');
         dbExecute('DELETE FROM stock_items WHERE id=?', [$id]);
+        dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'DELETE STOCK ITEM', "Item ID: {$id}"]);
         ok('Item deleted.', ['op' => 'delete', 'id' => $id]);
     }
 }
@@ -375,6 +394,7 @@ if ($module === 'users') {
             $newId = (int)getDB()->lastInsertId();
             $row = dbRow('SELECT * FROM sys_users WHERE id=?', [$newId]);
             unset($row['password_hash']);
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ADD USER', "Username: {$username}, Role: {$role}"]);
             ok("User '{$username}' created.", ['row' => $row, 'op' => 'add']);
         } catch (PDOException $e) {
             $msg = str_contains($e->getMessage(), 'Duplicate')
@@ -412,6 +432,7 @@ if ($module === 'users') {
             }
             $row = dbRow('SELECT * FROM sys_users WHERE id=?', [$id]);
             unset($row['password_hash']);
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'UPDATE USER', "User ID: {$id}, Username: {$username}"]);
             ok('User updated.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
         } catch (PDOException $e) {
             fail('Error: ' . $e->getMessage());
@@ -430,12 +451,14 @@ if ($module === 'users') {
         unset($row['password_hash']);
         $verb = $newStatus === 'Active' ? 'activated' : 'deactivated';
         ok("User {$verb}.", ['row' => $row, 'op' => 'edit', 'id' => $id]);
+        dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'TOGGLE USER STATUS', "User ID: {$id}, Status: {$newStatus}"]);
     }
 
     if ($action === 'delete') {
         $id = (int)($_POST['record_id'] ?? 0);
         if ($id === (int)$authUser['id']) fail('You cannot delete your own account.');
         dbExecute('DELETE FROM sys_users WHERE id=?', [$id]);
+        dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'DELETE USER', "User ID: {$id}"]);
         ok('User deleted.', ['op' => 'delete', 'id' => $id]);
     }
 }

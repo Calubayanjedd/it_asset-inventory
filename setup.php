@@ -93,7 +93,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyRun) {
                   model           VARCHAR(100) NOT NULL,
                   serial_number   VARCHAR(100) NOT NULL,
                   ip_address      VARCHAR(45)  DEFAULT NULL,
-                  mac_address     VARCHAR(17)  DEFAULT NULL,
                   purchase_date   DATE         DEFAULT NULL,
                   warranty_expiry DATE         DEFAULT NULL,
                   status          ENUM('Active','Under Repair','Retired') NOT NULL DEFAULT 'Active',
