@@ -133,7 +133,7 @@ $authInitial = strtoupper(substr($authName, 0, 1));
     </a>
 
     <!-- Logout button -->
-    <a href="logout.php"
+    <a href="#" id="logout-btn"
        style="display:flex;align-items:center;justify-content:center;gap:7px;
               margin-top:6px;padding:7px 10px;border-radius:var(--radius-sm);
               text-decoration:none;font-size:12.5px;font-weight:500;
@@ -152,6 +152,33 @@ $authInitial = strtoupper(substr($authName, 0, 1));
   </div>
 
 </aside>
+
+<!-- Logout confirmation modal -->
+<div class="modal-overlay" id="modal-logout-confirm">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">Confirm Sign Out</span>
+      <button class="modal-close" onclick="Modal.close('modal-logout-confirm')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:18px 22px">
+      <p>Are you sure you want to sign out? Your current session will end.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="Modal.close('modal-logout-confirm')">Cancel</button>
+      <a href="logout.php" class="btn btn-danger">Sign Out</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const logoutButton = document.getElementById('logout-btn');
+  if (logoutButton) {
+    logoutButton.addEventListener('click', function(e) {
+      e.preventDefault();
+      Modal.open('modal-logout-confirm');
+    });
+  }
+</script>
 
 <div class="main-content">
 

@@ -95,7 +95,7 @@ include 'includes/layout.php';
             <div class="flex gap-2">
               <button class="btn btn-ghost btn-xs" onclick='openEditModal(<?= $rj ?>)'>Edit</button>
               <?php if ($r['status'] === 'Assigned'): ?>
-              <button class="btn btn-secondary btn-xs" onclick="returnAsset(<?= $r['id'] ?>)">Return</button>
+              <button class="btn btn-secondary btn-xs ret-btn" data-id="<?= $r['id'] ?>">Return</button>
               <?php endif; ?>
               <button class="btn btn-danger btn-xs" onclick="deleteAssignment(<?= $r['id'] ?>)">Del</button>
             </div>
@@ -224,6 +224,26 @@ include 'includes/layout.php';
   </div>
 </div>
 
+<!-- RETURN CONFIRMATION MODAL -->
+<div class="modal-overlay" id="modal-confirm-return">
+  <div class="modal">
+    <div class="modal-header">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span class="modal-title">Confirm Return</span>
+      <button class="modal-close" onclick="Modal.close('modal-confirm-return')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to mark this asset as returned?</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="Modal.close('modal-confirm-return')">Cancel</button>
+      <button type="button" class="btn btn-secondary" onclick="confirmReturn()">Mark as Returned</button>
+    </div>
+  </div>
+</div>
+
 <?php include 'includes/layout_end.php'; ?>
 <script>
 /* ============================================================
@@ -238,13 +258,15 @@ function esc(v) {
 }
 
 function formatDate(d) {
-    if (!d || d === '—') return '—';
+    if (!d || d === '—' || d === '0000-00-00') return '—';
     const [y, m, day] = d.split('-');
-    return `${day} ${MONTHS[parseInt(m) - 1]} ${y}`;
+    const monthIndex = parseInt(m) - 1;
+    if (monthIndex < 0 || monthIndex >= 12 || !day || !y) return '—';
+    return `${day} ${MONTHS[monthIndex]} ${y}`;
 }
 
 // Build a <tr> for an assignment row
-function buildRow(r, idx) {
+function buildRow(r) {
     const STATUS_BADGES = { Assigned:'badge-blue', Returned:'badge-green', Available:'badge-gray' };
     const rowData = JSON.stringify(r).replace(/'/g, '&#39;');
     const returnBtn = r.status === 'Assigned'
@@ -252,7 +274,7 @@ function buildRow(r, idx) {
 
     return `
         <tr data-id="${r.id}" data-row='${rowData}'>
-            <td class="text-mono">${idx || ''}</td>
+            <td class="text-mono"></td>
             <td>
                 <span class="asset-id">${esc(r.asset_code || 'N/A')}</span>
                 <div class="text-muted">${esc(r.device_name || '—')}</div>
@@ -293,6 +315,13 @@ function updateStats() {
     document.getElementById('stat-available').textContent= available;
 }
 
+function renumberRows() {
+    const rows = document.querySelectorAll('#assign-tbody tr[data-id]');
+    rows.forEach((row, idx) => {
+        row.querySelector('td.text-mono').textContent = idx + 1;
+    });
+}
+
 function openEditModal(r) {
     document.getElementById('edit-id').value             = r.id;
     document.getElementById('edit-assigned-to').value    = r.assigned_to  || '';
@@ -313,29 +342,35 @@ function setSelectValue(id, val) {
     });
 }
 
-function insertRow(r) {
+function insertRow(r, renumber = true) {
     const empty = document.getElementById('empty-row');
     if (empty) empty.remove();
     const tbody = document.getElementById('assign-tbody');
-    const count = tbody.querySelectorAll('tr[data-id]').length + 1;
-    tbody.insertAdjacentHTML('afterbegin', buildRow(r, count));
+    tbody.insertAdjacentHTML('afterbegin', buildRow(r));
+    if (renumber) {
+        renumberRows();
+        updateStats();
+    }
 }
 
 function replaceRow(r) {
     const existing = document.querySelector(`#assign-tbody tr[data-id="${r.id}"]`);
     if (!existing) return;
-    const idx  = existing.querySelector('td') ? existing.querySelector('td').textContent : '';
     const temp = document.createElement('tbody');
-    temp.innerHTML = buildRow(r, idx);
+    temp.innerHTML = buildRow(r);
     existing.replaceWith(temp.firstElementChild);
 }
 
-function removeRow(id) {
+function removeRow(id, animate = true) {
     const row = document.querySelector(`#assign-tbody tr[data-id="${id}"]`);
     if (!row) return;
-    row.style.transition = 'opacity .25s';
-    row.style.opacity    = '0';
-    setTimeout(() => { row.remove(); updateStats(); }, 250);
+    if (animate) {
+        row.style.transition = 'opacity .25s';
+        row.style.opacity = '0';
+        setTimeout(() => { row.remove(); renumberRows(); updateStats(); }, 250);
+    } else {
+        row.remove();
+    }
 }
 
 /* ── Form Handlers ── */
@@ -347,7 +382,6 @@ document.getElementById('form-add').addEventListener('submit', function(e) {
         document.getElementById('form-add').reset();
         if (!data.row) return;
         insertRow(data.row);
-        updateStats();
     });
 });
 
@@ -361,6 +395,35 @@ document.getElementById('form-edit').addEventListener('submit', function(e) {
     });
 });
 
+/* ── Status Change Handler for Edit Modal ── */
+document.getElementById('edit-status').addEventListener('change', function(e) {
+    const dateAssignedField = document.getElementById('edit-date-assigned');
+    if (this.value === 'Assigned') {
+        // Set to today's date
+        dateAssignedField.value = new Date().toISOString().split('T')[0];
+    } else if (this.value === 'Available') {
+        // Clear the date
+        dateAssignedField.value = '';
+    }
+});
+
+// Store the record ID for return confirmation
+let pendingReturnId = null;
+
+function returnAsset(id) {
+    pendingReturnId = id;
+    Modal.open('modal-confirm-return');
+}
+
+function confirmReturn() {
+    if (!pendingReturnId) return;
+    Modal.close('modal-confirm-return');
+    AjaxForm.action('assignments', { action:'return', record_id: pendingReturnId },
+        data => { if (data.row) replaceRow(data.row); updateStats(); }
+    );
+    pendingReturnId = null;
+}
+
 /* ── Event Delegation ── */
 document.getElementById('assign-tbody').addEventListener('click', function(e) {
     const editBtn   = e.target.closest('.edit-btn');
@@ -373,11 +436,9 @@ document.getElementById('assign-tbody').addEventListener('click', function(e) {
     }
 
     if (retBtn) {
-        if (!confirm('Mark this asset as returned?')) return;
         const row = retBtn.closest('tr[data-id]');
-        AjaxForm.action('assignments', { action:'return', record_id: row.dataset.id },
-            data => { if (data.row) replaceRow(data.row); updateStats(); }
-        );
+        pendingReturnId = row.dataset.id;
+        Modal.open('modal-confirm-return');
     }
 
     if (delBtn) {
@@ -393,18 +454,24 @@ Poller.init('assignments', function(freshRows) {
     const domIds    = new Set([...tbody.querySelectorAll('tr[data-id]')].map(r => String(r.dataset.id)));
     const serverIds = new Set(freshRows.map(r => String(r.id)));
 
-    freshRows.forEach(r => { if (!domIds.has(String(r.id))) insertRow(r); });
-    domIds.forEach(id  => { if (!serverIds.has(id)) removeRow(id); });
+    // Remove deleted rows instantly
+    domIds.forEach(id => { if (!serverIds.has(id)) removeRow(id, false); });
+
+    // Insert new rows in reverse order to maintain DESC order
+    freshRows.slice().reverse().forEach(r => { if (!domIds.has(String(r.id))) insertRow(r, false); });
+
+    // Update existing rows
     freshRows.forEach(r => {
         const existing = tbody.querySelector(`tr[data-id="${r.id}"]`);
         if (!existing) return;
-        const idx  = existing.querySelector('td')?.textContent || '';
         const temp = document.createElement('tbody');
-        temp.innerHTML = buildRow(r, idx);
+        temp.innerHTML = buildRow(r);
         const newRow = temp.firstElementChild;
         if (existing.innerHTML !== newRow.innerHTML) existing.replaceWith(newRow);
     });
 
+    // Renumber and update stats
+    renumberRows();
     updateStats();
 });
 

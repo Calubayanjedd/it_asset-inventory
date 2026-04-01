@@ -20,7 +20,8 @@ $users = dbQuery('SELECT * FROM sys_users ORDER BY role ASC, username ASC');
 
 try {
     $logs = dbQuery(
-        'SELECT l.*, u.username FROM activity_log l
+        'SELECT l.*, u.username
+         FROM activity_log l
          LEFT JOIN sys_users u ON l.user_id = u.id
          ORDER BY l.created_at DESC LIMIT 100'
     );
@@ -113,7 +114,7 @@ include 'includes/layout.php';
 </div>
 
 <!-- TWO COLUMN LAYOUT -->
-<div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
+<div style="display:grid;grid-template-columns:1fr;gap:20px;align-items:start">
 
   <!-- LEFT: USERS TABLE -->
   <div>
@@ -219,7 +220,7 @@ include 'includes/layout.php';
           </button>
         </form>
       </div>
-      <div class="table-wrap" style="max-height:280px;overflow-y:auto">
+      <div class="table-wrap" style="max-height:450px;overflow-y:auto">
         <?php if (empty($logs)): ?>
         <div class="empty-state" style="padding:28px">
           <p>No activity recorded yet.</p>
@@ -243,7 +244,110 @@ include 'includes/layout.php';
                 ?>
                 <span class="badge <?= $cls ?>"><?= htmlspecialchars($l['action']) ?></span>
               </td>
-              <td class="text-muted"><?= htmlspecialchars($l['details'] ?? '') ?></td>
+              <td style="font-size:11px;color:var(--text-secondary);line-height:1.6">
+                <?php
+                  $details = $l['details'] ?? '';
+                  $action = $l['action'];
+
+                  // Parse details and create readable descriptions
+                  $parsed = [];
+                  $pairs = array_map('trim', explode(',', $details));
+                  foreach ($pairs as $pair) {
+                    if (empty($pair)) continue;
+                    [$key, $value] = array_pad(explode(':', $pair, 2), 2, '');
+                    $parsed[trim($key)] = trim($value);
+                  }
+
+                  // Resolve human-readable names if available
+                  $assetLookup = null;
+                  $assignedLookup = null;
+                  $locationLookup = null;
+
+                  if (!empty($parsed['Asset ID'])) {
+                    // Support both asset_id code and numeric ID values in details
+                    $assetLookup = dbRow('SELECT device_name FROM assets WHERE asset_id = ?', [$parsed['Asset ID']]);
+                    if (!$assetLookup && is_numeric($parsed['Asset ID'])) {
+                      $assetLookup = dbRow('SELECT device_name FROM assets WHERE id = ?', [(int)$parsed['Asset ID']]);
+                    }
+                  }
+
+                  if (!empty($parsed['Assigned to'])) {
+                    $assignedLookup = dbRow('SELECT full_name FROM sys_users WHERE username = ?', [$parsed['Assigned to']]);
+                  }
+
+                  if (!empty($parsed['Location ID'])) {
+                    $locationLookup = dbRow('SELECT building_name FROM locations WHERE location_id = ?', [$parsed['Location ID']]);
+                  }
+
+                  $assetName = $assetLookup['device_name'] ?? $parsed['Asset ID'] ?? null;
+                  $assignedName = $assignedLookup['full_name'] ?? $parsed['Assigned to'] ?? null;
+                  $locationName = $locationLookup['building_name'] ?? $parsed['Location ID'] ?? null;
+
+                  // Handle assignment ID lookup if present; provide asset/user context from assignment
+                  if (!empty($parsed['Assignment ID'])) {
+                    $assignment = dbRow('SELECT asset_id, assigned_to FROM assignments WHERE id = ?', [$parsed['Assignment ID']]);
+                    if ($assignment) {
+                      if (empty($assetName)) {
+                        $assetLookup = dbRow('SELECT device_name FROM assets WHERE id = ?', [$assignment['asset_id']]);
+                        $assetName = $assetLookup['device_name'] ?? $assetName;
+                      }
+                      if (empty($assignedName) && !empty($assignment['assigned_to'])) {
+                        $assignedLookup = dbRow('SELECT full_name FROM sys_users WHERE username = ?', [$assignment['assigned_to']]);
+                        $assignedName = $assignedLookup['full_name'] ?? $assignment['assigned_to'];
+                      }
+                    }
+                  }
+
+                  // Create readable descriptions with names
+                  $description = match(true) {
+                    str_contains($action, 'ADD ASSET') =>
+                      "Asset <strong>" . ($assetName ?: 'unknown') . "</strong> added",
+
+                    str_contains($action, 'UPDATE ASSET') =>
+                      "Asset <strong>" . ($assetName ?: 'unknown') . "</strong> updated",
+
+                    str_contains($action, 'ADD ASSIGNMENT') =>
+                      "<strong>" . ($assetName ?: 'unknown') . "</strong> assigned to <strong>" . ($assignedName ?: 'unknown') . "</strong>",
+
+                    str_contains($action, 'UPDATE ASSIGNMENT') =>
+                      "<strong>" . ($assetName ?: 'unknown') . "</strong> assignment updated",
+
+                    str_contains($action, 'RETURN ASSET') =>
+                      "<strong>" . ($assetName ?: 'unknown') . "</strong> returned",
+
+                    str_contains($action, 'ASSIGN ASSET') =>
+                      "<strong>" . ($assetName ?: 'unknown') . "</strong> reassigned",
+
+                    str_contains($action, 'DELETE ASSIGNMENT') =>
+                      "<strong>" . ($assetName ?: 'unknown') . "</strong> assignment removed",
+
+                    str_contains($action, 'ADD LOCATION') =>
+                      "Location <strong>" . ($locationName ?: 'unknown') . "</strong> added",
+
+                    str_contains($action, 'UPDATE LOCATION') =>
+                      "Location <strong>" . ($locationName ?: 'unknown') . "</strong> updated",
+
+                    str_contains($action, 'DELETE LOCATION') =>
+                      "Location <strong>" . ($locationName ?: 'unknown') . "</strong> removed",
+
+                    str_contains($action, 'ADD USER') =>
+                      "User account created",
+
+                    str_contains($action, 'UPDATE USER') =>
+                      "User account updated",
+
+                    str_contains($action, 'DELETE USER') =>
+                      "User account removed",
+
+                    str_contains($action, 'TOGGLE USER') =>
+                      "User status changed",
+
+                    default => htmlspecialchars($details)
+                  };
+
+                  echo $description;
+                ?>
+              </td>
             </tr>
             <?php endforeach; ?>
           </tbody>
@@ -253,70 +357,6 @@ include 'includes/layout.php';
     </div>
   </div>
 
-  <!-- RIGHT SIDEBAR -->
-  <div style="position:sticky;top:78px;display:flex;flex-direction:column;gap:20px">
-
-    <!-- Role Permissions Reference -->
-    <div class="card">
-      <div class="card-header">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <div class="card-title">Role Permissions</div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Module</th>
-              <th style="text-align:center">Admin</th>
-              <th style="text-align:center">IT Staff</th>
-              <th style="text-align:center">Viewer</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach (array_slice($permissions, 1) as $row): ?>
-            <tr>
-              <td style="font-size:12px;color:var(--text-secondary)"><?= $row[0] ?></td>
-              <td style="text-align:center;font-size:11px;color:<?= str_starts_with($row[1],'✓')?'var(--green)':'var(--red)' ?>"><?= $row[1] ?></td>
-              <td style="text-align:center;font-size:11px;color:<?= str_starts_with($row[2],'✓')?'var(--green)':($row[2]==='👁 View'?'var(--accent)':'var(--red)') ?>"><?= $row[2] ?></td>
-              <td style="text-align:center;font-size:11px;color:<?= str_starts_with($row[3],'✓')?'var(--green)':($row[3]==='👁 View'?'var(--accent)':'var(--red)') ?>"><?= $row[3] ?></td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Current Session -->
-    <div class="card">
-      <div class="card-header">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <div class="card-title">Current Session</div>
-      </div>
-      <div class="card-body">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-          <div style="width:44px;height:44px;border-radius:50%;background:var(--accent-glow);border:2px solid var(--accent);
-               display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--accent)">
-            <?= strtoupper(substr($currentUser['username'] ?? 'A', 0, 1)) ?>
-          </div>
-          <div>
-            <div style="font-weight:600;color:var(--text-primary)"><?= htmlspecialchars($currentUser['username'] ?? 'admin') ?></div>
-            <?= roleBadge($currentUser['role'] ?? 'Admin') ?>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
-          <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-elevated);border-radius:var(--radius-sm)">
-            <span style="color:var(--text-muted)">Session Started</span>
-            <span style="color:var(--text-secondary);font-family:var(--font-mono)"><?= date('H:i, d M') ?></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--bg-elevated);border-radius:var(--radius-sm)">
-            <span style="color:var(--text-muted)">Access Level</span>
-            <span style="color:var(--accent)">Full</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /right sidebar -->
 </div><!-- /grid -->
 
 <!-- ══ ADD MODAL ══ -->

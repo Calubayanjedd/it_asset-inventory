@@ -71,6 +71,9 @@ $expired = safeQuery(
      ORDER BY warranty_expiry DESC LIMIT 6'
 );
 
+/* ── ASSET UTILIZATION RATE ── */
+$assetUtilization = $assetTotal > 0 ? round(($assignActive / $assetTotal) * 100) : 0;
+
 /* ── RECENTLY ADDED (last 7 days) ── */
 $recentAssets = safeQuery(
     'SELECT asset_id, device_name, device_type, brand, status, created_at
@@ -108,7 +111,7 @@ include 'includes/layout.php';
 ?>
 
 <!-- ── TOP KPI STRIP ── -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:24px">
   <?php
   $kpis = [
     ['Total Assets',      $assetTotal,   'monitor',   '',        'All registered devices'],
@@ -118,7 +121,7 @@ include 'includes/layout.php';
   ];
   foreach ($kpis as [$label, $val, $icon, $color, $meta]):
   ?>
-  <div class="stat-card <?= $color ?>">
+  <div class="stat-card <?= $color ?>" style="cursor:pointer;transition:all 0.2s">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="stat-label"><?= $label ?></div>
       <div style="width:30px;height:30px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:var(--text-muted)">
@@ -135,17 +138,30 @@ include 'includes/layout.php';
   <?php endforeach; ?>
 </div>
 
+<!-- ── SECTION HEADER: Analytics ── -->
+<div style="display:flex;align-items:center;gap:12px;margin:36px 0 20px;padding-bottom:12px;border-bottom:2px solid var(--border)">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">System Analytics</h2>
+  <div style="flex:1"></div>
+  <a href="assets.php" class="btn btn-ghost btn-xs" style="font-size:11px">View All Assets →</a>
+</div>
+
 <!-- ── ROW 1: CHARTS ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:20px">
 
   <!-- Donut: Asset Status -->
-  <div class="card">
+  <div class="card" style="position:relative;overflow:hidden">
     <div class="card-header">
       <div class="card-title">Asset Status</div>
       <div class="card-subtitle">Current distribution</div>
     </div>
-    <div class="card-body" style="display:flex;justify-content:center;align-items:center;min-height:200px">
-      <canvas id="chart-status" style="max-height:200px"></canvas>
+    <div class="card-body" style="display:flex;justify-content:center;align-items:center;min-height:220px">
+      <canvas id="chart-status" style="max-height:220px"></canvas>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-elevated);font-size:11px;display:flex;justify-content:space-around;text-align:center">
+      <div><div style="font-weight:600;color:var(--green)"><?= $assetActive ?></div><div style="color:var(--text-muted)">Active</div></div>
+      <div><div style="font-weight:600;color:var(--yellow)"><?= $assetRepair ?></div><div style="color:var(--text-muted)">Repair</div></div>
+      <div><div style="font-weight:600;color:var(--text-muted)"><?= $assetRetired ?></div><div style="color:var(--text-muted)">Retired</div></div>
     </div>
   </div>
 
@@ -172,8 +188,16 @@ include 'includes/layout.php';
   </div>
 </div>
 
+<!-- ── SECTION HEADER: Alerts & Warnings ── -->
+<div style="display:flex;align-items:center;gap:12px;margin:36px 0 20px;padding-bottom:12px;border-bottom:2px solid var(--border)">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">Alerts & Warnings</h2>
+  <div style="flex:1"></div>
+  <span style="font-size:11px;color:var(--text-muted)"><?= count($expiringSoon) + count($expired) + count($lowStockItems) ?> total alerts</span>
+</div>
+
 <!-- ── ROW 2: TABLES ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px">
 
   <!-- Warranty Alerts -->
   <div class="card">
@@ -195,8 +219,8 @@ include 'includes/layout.php';
         <p>No expiries within 90 days.</p>
       </div>
       <?php else: ?>
-      <table>
-        <thead><tr><th>Asset ID</th><th>Device</th><th>Expiry</th><th>Days Left</th></tr></thead>
+      <table style="position:relative">
+        <thead style="position:sticky;top:0;background:var(--bg-elevated);z-index:10"><tr><th>Asset ID</th><th>Device</th><th>Expiry</th><th>Days Left</th></tr></thead>
         <tbody>
           <?php foreach ($expiringSoon as $w): ?>
           <tr>
@@ -249,17 +273,22 @@ include 'includes/layout.php';
         <p>No low stock alerts at this time.</p>
       </div>
       <?php else: ?>
-      <table>
-        <thead><tr><th>Item</th><th>Category</th><th>Qty</th><th>Min</th><th>Status</th></tr></thead>
+      <table style="position:relative">
+        <thead style="position:sticky;top:0;background:var(--bg-elevated);z-index:10"><tr><th>Item</th><th>Category</th><th>Qty</th><th>Min</th><th>Status</th></tr></thead>
         <tbody>
           <?php foreach ($lowStockItems as $s): ?>
           <tr>
             <td><span class="cell-primary"><?= htmlspecialchars($s['item_name']) ?></span></td>
             <td><span class="badge badge-gray"><?= htmlspecialchars($s['category']) ?></span></td>
-            <td class="cell-mono" style="color:<?= $s['quantity'] == 0 ? 'var(--red)' : 'var(--yellow)' ?>;font-weight:600">
-              <?= $s['quantity'] ?> <?= htmlspecialchars($s['unit']) ?>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <div class="cell-mono" style="color:<?= $s['quantity'] == 0 ? 'var(--red)' : 'var(--yellow)' ?>;font-weight:600;min-width:50px"><?= $s['quantity'] ?> <?= htmlspecialchars($s['unit']) ?></div>
+              </div>
+              <div style="width:60px;height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden">
+                <div style="height:100%;background:<?= $s['quantity'] == 0 ? 'var(--red)' : 'var(--yellow)' ?>;width:<?= min(($s['quantity'] / max($s['min_stock_level'], 1)) * 100, 100) ?>%"></div>
+              </div>
             </td>
-            <td class="cell-mono"><?= $s['min_stock_level'] ?></td>
+            <td class="cell-mono text-muted"><?= $s['min_stock_level'] ?></td>
             <td>
               <?php if ($s['status'] === 'Out of Stock'): ?>
               <span class="badge badge-red">Out of Stock</span>
@@ -276,8 +305,64 @@ include 'includes/layout.php';
   </div>
 </div>
 
+<!-- ── MINI CARDS: Key Metrics ── -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:36px 0 20px">
+  <!-- Asset Utilization -->
+  <div class="card">
+    <div class="card-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:700;color:var(--accent);margin-bottom:6px"><?= $assetUtilization ?>%</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Asset Utilization</div>
+      <div style="height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;background:var(--accent);width:<?= $assetUtilization ?>%"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-secondary)"><?= $assignActive ?> of <?= $assetTotal ?> devices</div>
+    </div>
+  </div>
+  <!-- Stock Health -->
+  <div class="card">
+    <div class="card-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:700;color:var(--green);margin-bottom:6px"><?= $stockTotal - ($stockLow + $stockOut) ?></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Well-Stocked Items</div>
+      <div style="height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;background:var(--green);width:<?= $stockTotal > 0 ? round((($stockTotal - ($stockLow + $stockOut)) / $stockTotal) * 100) : 0 ?>%"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-secondary)"><?= $stockTotal ?> total items</div>
+    </div>
+  </div>
+  <!-- Active Assignments -->
+  <div class="card">
+    <div class="card-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:700;color:var(--purple);margin-bottom:6px"><?= $assignActive ?></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Active Assignments</div>
+      <div style="height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;background:var(--purple);width:<?= $assignTotal > 0 ? round(($assignActive / $assignTotal) * 100) : 0 ?>%"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-secondary)"><?= $assignTotal ?> total records</div>
+    </div>
+  </div>
+  <!-- Alert Load -->
+  <div class="card">
+    <div class="card-body" style="text-align:center">
+      <div style="font-size:32px;font-weight:700;color:var(--red);margin-bottom:6px"><?= count($expiringSoon) + count($expired) + count($lowStockItems) ?></div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Pending Alerts</div>
+      <div style="height:4px;background:var(--bg-elevated);border-radius:2px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;background:var(--red);width:<?= (count($expiringSoon) + count($expired) + count($lowStockItems)) > 0 ? 100 : 0 ?>%"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-secondary)">Needs attention</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SECTION HEADER: Recent Activity ── -->
+<div style="display:flex;align-items:center;gap:12px;margin:36px 0 20px;padding-bottom:12px;border-bottom:2px solid var(--border)">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
+  <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">Recent Activity</h2>
+  <div style="flex:1"></div>
+  <a href="assignment.php" class="btn btn-ghost btn-xs" style="font-size:11px">View All →</a>
+</div>
+
 <!-- ── ROW 3: RECENT LISTS ── -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px">
 
   <!-- Recently Added Assets -->
   <div class="card">
@@ -289,8 +374,8 @@ include 'includes/layout.php';
       <?php if (empty($recentAssets)): ?>
       <div class="empty-state" style="padding:32px"><p>No assets yet.</p></div>
       <?php else: ?>
-      <table>
-        <thead><tr><th>Asset ID</th><th>Device</th><th>Type</th><th>Status</th><th>Added</th></tr></thead>
+      <table style="position:relative">
+        <thead style="position:sticky;top:0;background:var(--bg-elevated);z-index:10"><tr><th>Asset ID</th><th>Device</th><th>Type</th><th>Status</th><th>Added</th></tr></thead>
         <tbody>
           <?php foreach ($recentAssets as $a): ?>
           <tr>
@@ -326,8 +411,8 @@ include 'includes/layout.php';
       <?php if (empty($recentAssign)): ?>
       <div class="empty-state" style="padding:32px"><p>No assignments yet.</p></div>
       <?php else: ?>
-      <table>
-        <thead><tr><th>Asset</th><th>Assigned To</th><th>Dept</th><th>Date</th><th>Status</th></tr></thead>
+      <table style="position:relative">
+        <thead style="position:sticky;top:0;background:var(--bg-elevated);z-index:10"><tr><th>Asset</th><th>Assigned To</th><th>Dept</th><th>Date</th><th>Status</th></tr></thead>
         <tbody>
           <?php foreach ($recentAssign as $r): ?>
           <tr>
@@ -357,22 +442,22 @@ include 'includes/layout.php';
 <!-- ── QUICK SUMMARY FOOTER ── -->
 <div class="card" style="margin-bottom:8px">
   <div class="card-body">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:20px;text-align:center">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;text-align:center">
       <?php
         $summary = [
-          ['Total Assets',    $assetTotal,   'var(--text-primary)'],
-          ['Total Locations', $locTotal,     'var(--accent)'],
-          ['Assignments',     $assignTotal,  'var(--purple)'],
-          ['Stock Items',     $stockTotal,   'var(--green)'],
-          ['Low/Out Stock',   $stockLow+$stockOut, 'var(--yellow)'],
-          ['Warranty Alerts', count($expiringSoon)+count($expired), 'var(--red)'],
+          ['Total Assets',    $assetTotal,   'var(--text-primary)',  'assets.php'],
+          ['Locations',       $locTotal,     'var(--accent)',        'location.php'],
+          ['Assignments',     $assignTotal,  'var(--purple)',        'assignment.php'],
+          ['Stock Items',     $stockTotal,   'var(--green)',         'stock.php'],
+          ['Low/Out Stock',   $stockLow+$stockOut, 'var(--yellow)', 'stock.php'],
+          ['Warranty Alerts', count($expiringSoon)+count($expired), 'var(--red)', 'assets.php'],
         ];
-        foreach ($summary as [$l, $v, $c]):
+        foreach ($summary as [$l, $v, $c, $link]):
       ?>
-      <div>
-        <div style="font-size:24px;font-weight:700;font-family:var(--font-mono);color:<?= $c ?>"><?= $v ?></div>
-        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px"><?= $l ?></div>
-      </div>
+      <a href="<?= $link ?>" style="text-decoration:none;cursor:pointer;transition:all 0.2s;border-radius:var(--radius-sm);padding:12px;display:block;background:var(--bg-elevated);border:1px solid transparent;hover:border-color:<?= $c ?>" onmouseover="this.style.borderColor='<?= $c ?>'" onmouseout="this.style.borderColor='transparent'">
+        <div style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:<?= $c ?>"><?= $v ?></div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px"><?= $l ?></div>
+      </a>
       <?php endforeach; ?>
     </div>
   </div>

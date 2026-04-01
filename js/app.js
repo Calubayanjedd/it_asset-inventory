@@ -297,6 +297,8 @@ const Poller = {
   _start() {
     if (this.timer) return;
     this.timer = setInterval(() => this._tick(), this.interval);
+    // Initial immediate refresh so module data is available without waiting 5s
+    this._tick();
   },
 
   async _tick() {

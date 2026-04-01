@@ -193,6 +193,23 @@ if ($module === 'assignments') {
         }
     }
 
+    if ($action === 'assign') {
+        $id = (int)($_POST['record_id'] ?? 0);
+        if (!$id) fail('Missing record ID.');
+        try {
+            dbExecute("UPDATE assignments SET status='Assigned', date_assigned=CURDATE() WHERE id=?", [$id]);
+            $row = dbRow(
+                'SELECT asn.*, a.asset_id AS asset_code, a.device_name, a.device_type, a.brand
+                 FROM assignments asn LEFT JOIN assets a ON asn.asset_id = a.id WHERE asn.id = ?',
+                [$id]
+            );
+            dbExecute('INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)', [$authUser['id'], 'ASSIGN ASSET', "Assignment ID: {$id}"]);
+            ok('Asset assigned successfully.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
+        } catch (PDOException $e) {
+            fail('Error: ' . $e->getMessage());
+        }
+    }
+
     if ($action === 'delete') {
         $id = (int)($_POST['record_id'] ?? 0);
         if (!$id) fail('Missing record ID.');
