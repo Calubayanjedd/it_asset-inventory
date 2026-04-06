@@ -25,6 +25,9 @@ $authRole     = $authUser['role']      ?? 'Viewer';
 $authUsername = $authUser['username']  ?? '';
 $authName     = !empty($authUser['full_name']) ? $authUser['full_name'] : $authUser['username'];
 
+/* Load system settings — makes $sysSettings available everywhere */
+require_once __DIR__ . '/settings_loader.php';
+
 function requireRole(string ...$roles): void {
     global $authRole;
     if (!in_array($authRole, $roles, true)) {

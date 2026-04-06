@@ -93,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyRun) {
                   model           VARCHAR(100) NOT NULL,
                   serial_number   VARCHAR(100) NOT NULL,
                   ip_address      VARCHAR(45)  DEFAULT NULL,
+                  mac_address     VARCHAR(17)  DEFAULT NULL,
                   purchase_date   DATE         DEFAULT NULL,
                   warranty_expiry DATE         DEFAULT NULL,
                   status          ENUM('Active','Under Repair','Retired') NOT NULL DEFAULT 'Active',
@@ -176,6 +177,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyRun) {
                   CONSTRAINT fk_log_user FOREIGN KEY (user_id) REFERENCES sys_users(id) ON DELETE SET NULL ON UPDATE CASCADE,
                   INDEX idx_log_user (user_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                'maintenance_logs' => "CREATE TABLE IF NOT EXISTS maintenance_logs (
+                  id               INT UNSIGNED  AUTO_INCREMENT PRIMARY KEY,
+                  asset_id         INT UNSIGNED  NULL,
+                  maintenance_type VARCHAR(100)  NOT NULL,
+                  description      TEXT          NULL,
+                  performed_by     VARCHAR(150)  NOT NULL,
+                  maintenance_date DATE          NOT NULL,
+                  status           VARCHAR(50)   NOT NULL DEFAULT 'Completed',
+                  cost             DECIMAL(10,2) NULL,
+                  next_schedule    DATE          NULL,
+                  created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  CONSTRAINT fk_maint_asset FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE SET NULL ON UPDATE CASCADE,
+                  INDEX idx_maint_date (maintenance_date),
+                  INDEX idx_maint_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                'sys_settings' => "CREATE TABLE IF NOT EXISTS sys_settings (
+                  setting_key   VARCHAR(100) PRIMARY KEY,
+                  setting_value TEXT         NULL,
+                  updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
             ];
 
             foreach ($tables as $name => $sql) {
@@ -209,6 +232,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$alreadyRun) {
             } catch (PDOException $e) {
                 $steps[] = ['error', 'Admin user creation failed: ' . $e->getMessage()];
                 $hasError = true;
+            }
+        }
+
+        /* ── Step 4b: Seed default settings ── */
+        if (!$hasError) {
+            try {
+                $defaults = [
+                    ['system_name',     'IT INVENTORY SYSTEM'],
+                    ['system_subtitle', 'v1.0 · MIS Department'],
+                    ['accent_color',    '#3b6ef0'],
+                    ['logo_type',       'icon'],
+                    ['logo_image',      null],
+                ];
+                $stmt = $pdo->prepare(
+                    'INSERT INTO sys_settings (setting_key, setting_value)
+                     VALUES (?, ?)
+                     ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+                );
+                foreach ($defaults as [$key, $val]) {
+                    $stmt->execute([$key, $val]);
+                }
+                $steps[] = ['ok', 'Default settings seeded'];
+            } catch (PDOException $e) {
+                $steps[] = ['warning', 'Settings seed skipped: ' . $e->getMessage()];
+                // Non-fatal — system works without settings row
             }
         }
 

@@ -66,6 +66,15 @@ switch ($module) {
              FROM sys_users ORDER BY role ASC, username ASC'
         );
         sendRows($rows);
+    
+    case 'maintenance':
+        $rows = dbQuery(
+            'SELECT m.*, a.asset_id AS asset_code, a.device_name, a.device_type, a.brand
+             FROM maintenance_logs m
+             LEFT JOIN assets a ON m.asset_id = a.id
+             ORDER BY m.maintenance_date DESC, m.created_at DESC'
+        );
+        sendRows($rows);
 
     default:
         echo json_encode(['ok' => false, 'error' => 'Unknown module']);

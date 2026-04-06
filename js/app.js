@@ -281,14 +281,12 @@ const Poller = {
   lastHash:       null,
   timer:          null,
   pauses:         {},
-  indicator:      null,
   _immediateTimer: null,
   _ticking:       false,    // prevents concurrent _tick() calls
 
   init(module, rebuildFn) {
     this.module    = module;
     this.rebuildFn = rebuildFn;
-    this._buildIndicator();
     this._watchInputFocus();
     this._watchVisibility();
     this._start();
@@ -333,13 +331,10 @@ const Poller = {
 
   pause(reason) {
     this.pauses[reason] = true;
-    if (this.indicator) this.indicator.style.opacity = '0.3';
   },
 
   resume(reason) {
     delete this.pauses[reason];
-    const anyPause = Object.values(this.pauses).some(Boolean);
-    if (this.indicator) this.indicator.style.opacity = anyPause ? '0.3' : '1';
   },
 
   resetHash() {
@@ -379,35 +374,5 @@ const Poller = {
         this.resume('hidden');
       }
     });
-  },
-
-  _buildIndicator() {
-    const topbarActions = document.querySelector('.topbar-actions');
-    if (!topbarActions) return;
-
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono)';
-
-    const dot = document.createElement('span');
-    dot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;transition:opacity .3s';
-    dot.title = 'Live — syncs every 5 seconds';
-
-    const label = document.createElement('span');
-    label.textContent = 'Live';
-
-    wrap.appendChild(dot);
-    wrap.appendChild(label);
-    topbarActions.insertBefore(wrap, topbarActions.firstChild);
-    this.indicator = dot;
-  },
-
-  _flash() {
-    if (!this.indicator) return;
-    this.indicator.style.background   = 'var(--accent)';
-    this.indicator.style.boxShadow    = '0 0 6px var(--accent)';
-    setTimeout(() => {
-      this.indicator.style.background = 'var(--green)';
-      this.indicator.style.boxShadow  = '0 0 5px rgba(22,163,74,.5)';
-    }, 400);
   }
 };

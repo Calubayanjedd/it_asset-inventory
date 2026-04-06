@@ -480,5 +480,171 @@ if ($module === 'users') {
     }
 }
 
+/* ================================================================
+   MODULE: SETTINGS  (Admin only)
+================================================================ */
+if ($module === 'settings') {
+    if ($authRole !== 'Admin') fail('Access denied.');
+ 
+    if ($action === 'save') {
+        $allowed = ['system_name', 'system_subtitle', 'accent_color', 'sidebar_dark', 'logo_type'];
+ 
+        foreach ($allowed as $key) {
+            if (!isset($_POST[$key])) continue;
+            $value = trim($_POST[$key]);
+ 
+            // Validate accent color — must be a valid hex color
+            if ($key === 'accent_color' && !preg_match('/^#[0-9a-fA-F]{6}$/', $value)) {
+                fail('Invalid color format. Use a hex color like #3b6ef0.');
+            }
+ 
+            dbExecute(
+                'INSERT INTO sys_settings (setting_key, setting_value)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+                [$key, $value ?: null]
+            );
+        }
+ 
+        ok('Settings saved successfully.');
+    }
+ 
+    if ($action === 'upload_logo') {
+        if (empty($_FILES['logo_file']['tmp_name'])) {
+            fail('No file uploaded.');
+        }
+ 
+        $file     = $_FILES['logo_file'];
+        $allowed  = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/svg+xml'];
+        $maxSize  = 2 * 1024 * 1024; // 2MB
+ 
+        if (!in_array($file['type'], $allowed)) {
+            fail('Only PNG, JPG, GIF, WEBP or SVG files are allowed.');
+        }
+        if ($file['size'] > $maxSize) {
+            fail('File is too large. Maximum size is 2MB.');
+        }
+ 
+        // Save to uploads folder
+        $uploadDir = __DIR__ . '/../uploads/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+ 
+        $ext      = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = 'logo_' . time() . '.' . $ext;
+        $dest     = $uploadDir . $filename;
+ 
+        if (!move_uploaded_file($file['tmp_name'], $dest)) {
+            fail('Failed to save file. Check folder permissions.');
+        }
+ 
+        $url = 'uploads/' . $filename;
+        dbExecute(
+            'INSERT INTO sys_settings (setting_key, setting_value)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+            ['logo_image', $url]
+        );
+        dbExecute(
+            'INSERT INTO sys_settings (setting_key, setting_value)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+            ['logo_type', 'image']
+        );
+ 
+        ok('Logo uploaded.', ['url' => $url]);
+    }
+ 
+    if ($action === 'reset_logo') {
+        dbExecute(
+            'INSERT INTO sys_settings (setting_key, setting_value)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+            ['logo_type', 'icon']
+        );
+        dbExecute(
+            'INSERT INTO sys_settings (setting_key, setting_value)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+            ['logo_image', null]
+        );
+        ok('Logo reset to default icon.');
+    }
+}
+
+/* ================================================================
+   MODULE: MAINTENANCE
+================================================================ */
+if ($module === 'maintenance') {
+ 
+    // Shared row query — joins asset info for display
+    $rowQuery = 'SELECT m.*, a.asset_id AS asset_code, a.device_name, a.device_type, a.brand
+                 FROM maintenance_logs m
+                 LEFT JOIN assets a ON m.asset_id = a.id
+                 WHERE m.id = ?';
+ 
+    if ($action === 'add' || $action === 'edit') {
+        $fields = [
+            'asset_id'         => (int)($_POST['asset_id'] ?? 0) ?: null,
+            'maintenance_type' => trim($_POST['maintenance_type'] ?? ''),
+            'description'      => trim($_POST['description']      ?? '') ?: null,
+            'performed_by'     => trim($_POST['performed_by']     ?? ''),
+            'maintenance_date' => $_POST['maintenance_date']      ?? date('Y-m-d'),
+            'status'           => $_POST['status']                ?? 'Completed',
+            'cost'             => is_numeric($_POST['cost'] ?? '') ? (float)$_POST['cost'] : null,
+            'next_schedule'    => $_POST['next_schedule'] ?: null,
+        ];
+ 
+        if (!$fields['maintenance_type']) fail('Maintenance type is required.');
+        if (!$fields['performed_by'])     fail('Performed By is required.');
+        if (!$fields['maintenance_date']) fail('Maintenance date is required.');
+ 
+        try {
+            if ($action === 'add') {
+                dbExecute(
+                    'INSERT INTO maintenance_logs
+                     (asset_id, maintenance_type, description, performed_by,
+                      maintenance_date, status, cost, next_schedule)
+                     VALUES
+                     (:asset_id, :maintenance_type, :description, :performed_by,
+                      :maintenance_date, :status, :cost, :next_schedule)',
+                    $fields
+                );
+                $newId = (int)getDB()->lastInsertId();
+                $row   = dbRow($rowQuery, [$newId]);
+                ok('Maintenance record saved.', ['row' => $row, 'op' => 'add']);
+            } else {
+                $id = (int)($_POST['record_id'] ?? 0);
+                if (!$id) fail('Missing record ID.');
+                dbExecute(
+                    'UPDATE maintenance_logs
+                     SET asset_id=:asset_id, maintenance_type=:maintenance_type,
+                         description=:description, performed_by=:performed_by,
+                         maintenance_date=:maintenance_date, status=:status,
+                         cost=:cost, next_schedule=:next_schedule
+                     WHERE id=:id',
+                    array_merge($fields, ['id' => $id])
+                );
+                $row = dbRow($rowQuery, [$id]);
+                ok('Maintenance record updated.', ['row' => $row, 'op' => 'edit', 'id' => $id]);
+            }
+        } catch (PDOException $e) {
+            fail('Error: ' . $e->getMessage());
+        }
+    }
+ 
+    if ($action === 'delete') {
+        $id = (int)($_POST['record_id'] ?? 0);
+        if (!$id) fail('Missing record ID.');
+        try {
+            dbExecute('DELETE FROM maintenance_logs WHERE id = ?', [$id]);
+            ok('Record deleted.', ['op' => 'delete', 'id' => $id]);
+        } catch (PDOException $e) {
+            fail('Error: ' . $e->getMessage());
+        }
+    }
+}
+
 /* Fallback */
 fail('Unknown module or action.');
