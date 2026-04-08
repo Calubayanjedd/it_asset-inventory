@@ -13,7 +13,7 @@ $filterMon   = substr($filterMonth, 5, 2);
 
 // All records for the selected month
 $records = dbQuery(
-    'SELECT m.*, a.asset_id AS asset_code, a.device_name, a.device_type, a.brand
+    'SELECT m.*, a.asset_id AS asset_code, a.model, a.device_type, a.brand
      FROM maintenance_logs m
      LEFT JOIN assets a ON m.asset_id = a.id
      WHERE YEAR(m.maintenance_date) = ? AND MONTH(m.maintenance_date) = ?
@@ -22,7 +22,10 @@ $records = dbQuery(
 );
 
 // All assets for the dropdown
-$allAssets = dbQuery('SELECT id, asset_id, device_name, brand FROM assets ORDER BY asset_id');
+$allAssets = dbQuery('SELECT id, asset_id, model, brand FROM assets ORDER BY asset_id');
+
+// All users for the performed by dropdown
+$allUsers = dbQuery('SELECT full_name FROM sys_users WHERE status = "Active" ORDER BY full_name');
 
 // Stats for this month
 $total     = count($records);
@@ -80,17 +83,16 @@ include 'includes/layout.php';
       <input type="month" id="month-picker" value="<?= htmlspecialchars($filterMonth) ?>"
              class="filter-select" style="font-family:var(--font-mono);font-size:12px"
              onchange="window.location='maintenance.php?month='+this.value">
-      <!-- Print button -->
-      <a href="maintenance_print.php?month=<?= urlencode($filterMonth) ?>"
-         target="_blank" class="btn btn-ghost btn-sm">
+      <!-- Export button -->
+      <button class="btn btn-ghost btn-sm" onclick="showExportPreview()">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
              fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="6 9 6 2 18 2 18 9"/>
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-          <rect x="6" y="14" width="12" height="8"/>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        Print / PDF
-      </a>
+        Export to Excel
+      </button>
       <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-add')">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
              fill="none" stroke="currentColor" stroke-width="2.5">
@@ -155,8 +157,8 @@ include 'includes/layout.php';
           <td class="cell-mono"><?= date('d M Y', strtotime($r['maintenance_date'])) ?></td>
           <td>
             <?php if ($r['asset_code']): ?>
-            <span class="asset-id"><?= htmlspecialchars($r['asset_code']) ?></span>
-            <div class="text-muted"><?= htmlspecialchars($r['device_name'] ?? '') ?></div>
+            <span class="asset-id"><?= htmlspecialchars($r['device_type']) ?> / <?= htmlspecialchars($r['brand']) ?></span>
+            <div class="text-muted"><?= htmlspecialchars($r['model'] ?? '') ?></div>
             <?php else: ?>
             <span class="text-muted">—</span>
             <?php endif; ?>
@@ -255,7 +257,12 @@ include 'includes/layout.php';
           </div>
           <div class="form-group">
             <label>Performed By <span class="req">*</span></label>
-            <input type="text" name="performed_by" required placeholder="Technician name">
+            <select name="performed_by" required>
+              <option value="">— Select technician —</option>
+              <?php foreach ($allUsers as $u): ?>
+              <option value="<?= htmlspecialchars($u['full_name']) ?>"><?= htmlspecialchars($u['full_name']) ?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
           <div class="form-group">
             <label>Cost (₱)</label>
@@ -280,80 +287,71 @@ include 'includes/layout.php';
   </div>
 </div>
 
-<!-- ═══ EDIT MODAL ═══ -->
-<div class="modal-overlay" id="modal-edit">
-  <div class="modal">
+<!-- ═══ EXPORT PREVIEW MODAL ═══ -->
+<div class="modal-overlay" id="modal-export-preview">
+  <div class="modal" style="max-width:900px">
     <div class="modal-header">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-           fill="none" stroke="var(--yellow)" stroke-width="2">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+           fill="none" stroke="var(--accent)" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      <span class="modal-title">Edit Maintenance Record</span>
-      <button class="modal-close" onclick="Modal.close('modal-edit')">
+      <span class="modal-title">Export Preview — <?= htmlspecialchars($monthLabel) ?></span>
+      <button class="modal-close" onclick="Modal.close('modal-export-preview')">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
              fill="none" stroke="currentColor" stroke-width="2.5">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <form id="form-edit">
-      <input type="hidden" name="action" value="edit">
-      <input type="hidden" name="record_id" id="edit-id">
-      <div class="modal-body">
-        <div class="form-grid">
-          <div class="form-group full-span">
-            <label>Asset</label>
-            <select name="asset_id" id="edit-asset-id">
-              <option value="">— General / No specific asset —</option>
-              <?php foreach ($allAssets as $a): ?>
-              <option value="<?= $a['id'] ?>">
-                [<?= htmlspecialchars($a['asset_id']) ?>] <?= htmlspecialchars($a['device_name']) ?>
-              </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Maintenance Type</label>
-            <select name="maintenance_type" id="edit-type">
-              <option>Preventive</option><option>Corrective</option>
-              <option>Hardware Repair</option><option>Software</option>
-              <option>Cleaning</option><option>Inspection</option><option>Other</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Status</label>
-            <select name="status" id="edit-status">
-              <option>Completed</option><option>Pending</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Maintenance Date</label>
-            <input type="date" name="maintenance_date" id="edit-date">
-          </div>
-          <div class="form-group">
-            <label>Performed By</label>
-            <input type="text" name="performed_by" id="edit-performed-by">
-          </div>
-          <div class="form-group">
-            <label>Cost (₱)</label>
-            <input type="number" name="cost" id="edit-cost" min="0" step="0.01">
-          </div>
-          <div class="form-group">
-            <label>Next Schedule</label>
-            <input type="date" name="next_schedule" id="edit-next-schedule">
-          </div>
-          <div class="form-group full-span">
-            <label>Description</label>
-            <textarea name="description" id="edit-description" rows="3"></textarea>
-          </div>
-        </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;color:var(--text-muted);font-size:13px">
+        Preview of the data that will be exported to Excel. Click "Download CSV" to export.
+      </p>
+      <div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+        <table id="export-preview-table" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="background:var(--bg-elevated);position:sticky;top:0">
+            <tr>
+              <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);font-weight:600">Date</th>
+              <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);font-weight:600">Asset</th>
+              <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);font-weight:600">Description</th>
+              <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);font-weight:600">Cost</th>
+              <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);font-weight:600">Status</th>
+            </tr>
+          </thead>
+          <tbody id="export-preview-tbody">
+            <?php if (empty($records)): ?>
+            <tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text-muted)">No records to export</td></tr>
+            <?php else: ?>
+            <?php foreach ($records as $r): ?>
+            <tr>
+              <td style="padding:6px 10px;border-bottom:1px solid var(--border-light);font-family:var(--font-mono)">
+                <?= date('m/d/Y', strtotime($r['maintenance_date'])) ?>
+              </td>
+              <td style="padding:6px 10px;border-bottom:1px solid var(--border-light)">
+                <?= htmlspecialchars($r['asset_code'] ? $r['device_type'] . ' / ' . $r['brand'] . ', ' . $r['model'] : 'General') ?>
+              </td>
+              <td style="padding:6px 10px;border-bottom:1px solid var(--border-light);max-width:200px;word-wrap:break-word">
+                <?= htmlspecialchars($r['description'] ?? '') ?>
+              </td>
+              <td style="padding:6px 10px;border-bottom:1px solid var(--border-light);font-family:var(--font-mono);text-align:right">
+                <?= $r['cost'] ? number_format((float)$r['cost'], 2) : '' ?>
+              </td>
+              <td style="padding:6px 10px;border-bottom:1px solid var(--border-light)">
+                <?= htmlspecialchars($r['status']) ?>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="Modal.close('modal-edit')">Cancel</button>
-        <button type="submit" class="btn btn-primary">Update Record</button>
-      </div>
-    </form>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="Modal.close('modal-export-preview')">Cancel</button>
+      <a href="maintenance_export.php?month=<?= urlencode($filterMonth) ?>" class="btn btn-primary">Download CSV</a>
+    </div>
   </div>
 </div>
 
@@ -380,7 +378,7 @@ function buildRow(r, idx) {
     const statusCls = r.status === 'Completed' ? 'badge-green' : 'badge-yellow';
     const cost      = r.cost ? '₱' + parseFloat(r.cost).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '—';
     const asset     = r.asset_code
-        ? `<span class="asset-id">${esc(r.asset_code)}</span><div class="text-muted">${esc(r.device_name || '')}</div>`
+        ? `<span class="asset-id">${esc(r.device_type)} / ${esc(r.brand)}</span><div class="text-muted">${esc(r.model || '')}</div>`
         : '<span class="text-muted">—</span>';
     const rowData   = JSON.stringify(r).replace(/'/g, '&#39;');
 
@@ -436,7 +434,7 @@ function updateStats() {
 function openEditModal(r) {
     document.getElementById('edit-id').value             = r.id;
     document.getElementById('edit-date').value           = r.maintenance_date || '';
-    document.getElementById('edit-performed-by').value   = r.performed_by     || '';
+    setSelectValue('edit-performed-by', r.performed_by || '');
     document.getElementById('edit-cost').value           = r.cost             || '';
     document.getElementById('edit-next-schedule').value  = r.next_schedule    || '';
     document.getElementById('edit-description').value    = r.description      || '';
@@ -554,5 +552,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initSelectFilter('filter-type',   'maint-table', 3);
     initSelectFilter('filter-status', 'maint-table', 8);
 });
+
+/* ── Export Preview ── */
+function showExportPreview() {
+    Modal.open('modal-export-preview');
+}
 </script>
 <?php // end ?>
