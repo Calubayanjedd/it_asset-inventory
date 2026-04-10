@@ -62,7 +62,7 @@ include 'includes/layout.php';
   <div class="card-header">
     <div>
       <div class="card-title">Location Directory</div>
-      <div class="card-subtitle"><?= $total ?> locations registered</div>
+      <!-- <div class="card-subtitle"><?= $total ?> locations registered</div> // Remove ambiguous subtexts -->
     </div>
     <div class="ml-auto flex gap-2">
       <!-- View toggle -->

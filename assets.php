@@ -68,7 +68,7 @@ include 'includes/layout.php';
   <div class="card-header">
     <div>
       <div class="card-title">Device Inventory</div>
-      <div class="card-subtitle" id="asset-count-label"><?= $total ?> assets registered</div>
+      <!-- <div class="card-subtitle" id="asset-count-label"><?= $total ?> assets registered</div> // Remove ambiguous subtexts -->
     </div>
     <div class="ml-auto">
       <button class="btn btn-primary btn-sm" onclick="Modal.open('modal-add')">

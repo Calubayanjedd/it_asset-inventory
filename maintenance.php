@@ -76,7 +76,7 @@ include 'includes/layout.php';
   <div class="card-header">
     <div>
       <div class="card-title">Maintenance Log</div>
-      <div class="card-subtitle"><?= htmlspecialchars($monthLabel) ?> — <?= $total ?> record<?= $total !== 1 ? 's' : '' ?></div>
+      <div class="card-subtitle"><?= htmlspecialchars($monthLabel) ?></div> <!-- Remove this from the div "- <?= $total ?> record<?= $total !== 1 ? 's' : '' ?>" -->
     </div>
     <div class="ml-auto flex gap-2">
       <!-- Month picker -->
